@@ -1,21 +1,17 @@
-import os
-import json
+import pprint
+import datetime
 import requests
-import redis
-from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
-load_dotenv()
-DB_ENDPOINT = os.getenv("UPSTACK_ENDPOINT")
-DB_PORT = os.getenv("UPSTACK_PORT")
-DB_PASSWORD = os.getenv("UPSTACK_PASSWORD")
-TODAY = '20230516'
+import db
+import db_cache as redis
 
-r = redis.Redis(
-  host= DB_ENDPOINT,
-  port= DB_PORT,
-  password=DB_PASSWORD,
-)
+db.connect()
+r_client = redis.connect()
+
+readings_table_name = 'readings'
+# readings_table = db.get_collection('readings')
+TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
 
 URL = 'https://www.ciudadredonda.org/calendario-lecturas/evangelio-del-dia/?f=2023-05-17'
 URL = 'https://www.ciudadredonda.org/calendario-lecturas/evangelio-del-dia/hoy'
@@ -90,17 +86,18 @@ def get_pieces_of_content(content):
 
     return res
 
-def post_lectura(content):
-    key = TODAY
-    content = json.dumps(content)
-    r.set(key, content)
-    print(r.get(key))
+
 
 def main():
     content = get_html_content()
     res = get_pieces_of_content(content)
-    post_lectura(res)
-    # print(res)
+    cache_id = redis.post_lectura(TODAY, res)
+    inserted_id = db.post_doc('readings', res)
+    print('inserted_id')
+    print(inserted_id)
+    print('cache_id')
+    print(cache_id)
+    # print(db.get_collection(readings_table_name).find_one(inserted_id))
     # print(title)
 
 if __name__ == '__main__':
