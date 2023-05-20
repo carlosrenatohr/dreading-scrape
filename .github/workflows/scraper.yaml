@@ -2,7 +2,7 @@ name: Daily Reading Scraping
 
 on:
   schedule:
-    - cron: "30 20 * * *"
+    - cron: "35 22 * * *"
 
 jobs:
   build:
@@ -21,11 +21,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Add content roots to PYTHONPATH
-        env:
-          PYTHONPATH: ${{ github.workspace }}/services
-        run: |
-          echo "export PYTHONPATH=${PYTHONPATH}" >> $GITHUB_ENV
+#      - name: Add content roots to PYTHONPATH
+#        env:
+#          PYTHONPATH: ${{ github.workspace }}/services
+#        run: |
+#          echo "export PYTHONPATH=${PYTHONPATH}" >> $GITHUB_ENV
       
       - name: Run scraper
         env: 
