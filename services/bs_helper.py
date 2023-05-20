@@ -5,6 +5,8 @@ def get_lecture_pieces(content):
 
     body = BeautifulSoup(content, 'html.parser')
     res['title'] = body.find('h1').text
+    res['date_title'] = body.find('time').text
+    res['date_raw'] = body.find('time').attrs['datetime']
     res['lecturas'] = []
     lecturas = body.find_all('div', {'class':"lecturas"})
     for section in body.find_all('section'):
@@ -21,7 +23,7 @@ def get_lecture_pieces(content):
         if salmo_extract:
             lectura_row['psalm'] = salmo_extract
         else:
-            lectura_row['last_line'] = lectura_content_b[1].text
+            lectura_row['last_line'] = lectura_content_b[1].text if len(lectura_content_b) > 1 else ''
         res['lecturas'].append(lectura_row)
 
     return res
