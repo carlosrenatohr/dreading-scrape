@@ -18,7 +18,7 @@ def connect():
   
   return r
 
-def post_lectura(key, content):
+def post(key, content):
     r = connect()
     content = json.dumps(content)
     r.set(key, content)
