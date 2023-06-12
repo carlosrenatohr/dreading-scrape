@@ -2,7 +2,7 @@ name: Daily Reading Scraping
 
 on:
   schedule:
-    - cron: "35 22 * * *"
+    - cron: "35 3 * * *"
 
 jobs:
   build:
