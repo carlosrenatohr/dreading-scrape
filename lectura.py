@@ -1,11 +1,15 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import services.db as db
 import services.db_cache as redis
 import services.bs_helper as scrapper
 
 readings_table_name = 'readings'
-today = datetime.now().date() #.strftime("%Y-%m-%d")
+today_utc = today = datetime.now(timezone.utc)
+today_eu = today_utc.astimezone(timezone(timedelta(hours=1)))
+
+today = datetime.now(timezone.utc).date().strftime("%Y-%m-%d")
+now_eu = today_eu.date().strftime("%Y-%m-%d")
 edate = datetime(2023,5,20) #.strftime("%Y-%m-%d")
 sdate = datetime(2023,4,9) # .strftime("%Y-%m-%d") // 2/13, 4/7-8
 
@@ -78,7 +82,7 @@ def run_today():
 
 def send_data_to_db(content):
     res = scrapper.get_lecture_pieces(content)
-    cache_id = redis.post('today', res)
+    cache_id = redis.post(now_eu, res)
     inserted_id = db.post_doc('readings', res)
     print(f'Inserted id: {inserted_id}')
     print(f'Cache id: {cache_id}')
