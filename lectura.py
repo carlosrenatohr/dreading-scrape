@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import requests
-import services.db as db
+from services.db import MongoUp
 from services.db_cache import RedisUp
 import services.bs_helper as scrapper
 
@@ -83,10 +83,13 @@ def run_today():
 def send_data_to_db(content):
     res = scrapper.get_lecture_pieces(content)
     cache_id = redis.post(now_eu, res)
-    print(f'Inserted id: {cache_id}\n')
-    inserted_id = db.post_doc('readings', res)
-    print(f'Inserted id: {inserted_id}')
-    print(f'Cache id: {cache_id}')
+    print(f'Cache id: {cache_id}\n')
+    # avoid duplicates in the database
+    where = {'date_raw': res['date_raw']}
+    inserted_id = db.get_doc(readings_table_name, where)
+    if not inserted_id:
+        inserted_id = db.post_doc(readings_table_name, res)
+    print(f'Mongo id: {inserted_id}\n')
 
 def main():
     # run_from_date(sdate, today)
@@ -94,4 +97,5 @@ def main():
 
 if __name__ == '__main__':
     redis = RedisUp()
+    db = MongoUp()
     main()
