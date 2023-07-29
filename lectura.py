@@ -5,10 +5,10 @@ from services.db_cache import RedisUp
 import services.bs_helper as scrapper
 
 readings_table_name = 'readings'
-today_utc = today = datetime.now(timezone.utc)
-today_eu = today_utc.astimezone(timezone(timedelta(hours=1)))
+today = datetime.now(timezone.utc)
+today_eu = today.astimezone(timezone(timedelta(hours=1)))
 
-today = datetime.now(timezone.utc).date().strftime("%Y-%m-%d")
+now = today.date().strftime("%Y-%m-%d")
 now_eu = today_eu.date().strftime("%Y-%m-%d")
 edate = datetime(2023,5,20) #.strftime("%Y-%m-%d")
 sdate = datetime(2023,4,9) # .strftime("%Y-%m-%d") // 2/13, 4/7-8
@@ -62,14 +62,23 @@ def get_html_content():
 
     return content
 
+
 def loop_days_range(start_date, end_date):
    current_date = start_date
    while current_date <= end_date:
         yield current_date
         current_date += timedelta(days=1)
 
+
 def run_from_date(start_date, end_date):
     for time in loop_days_range(sdate, today):
+        datee = time.strftime("%Y-%m-%d")
+        content = request_web_content(datee)
+        send_data_to_db(content)
+
+
+def run_from_last_week():
+    for time in loop_days_range(today - timedelta(days=7), today):
         datee = time.strftime("%Y-%m-%d")
         content = request_web_content(datee)
         send_data_to_db(content)
@@ -93,7 +102,8 @@ def send_data_to_db(content):
 
 def main():
     # run_from_date(sdate, today)
-    run_today()
+    # run_today()
+    run_from_last_week()
 
 if __name__ == '__main__':
     redis = RedisUp()
