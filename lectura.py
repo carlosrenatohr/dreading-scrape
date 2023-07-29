@@ -89,6 +89,10 @@ def run_today():
     send_data_to_db(content)
     
 
+# TODO: Add reverse function to fetch future readings instead past which makes more sens
+# TODO: Add a function to fetch readings from a specific date
+# TODO: Move the logic to the db_cache.py file
+# TODO: Move the http request after the cache check
 def send_data_to_db(content):
     res = scrapper.get_lecture_pieces(content)
     cache_id = redis.post(now_eu, res)
