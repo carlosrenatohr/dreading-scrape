@@ -13,8 +13,10 @@ def get_lecture_pieces(content):
         # Get the content of the reading to scrape it
         lectura_content = section.find('div', {'class':'texto_palabra'})
         lectura_content_b = lectura_content.find_all('b')
-        # Remove the <script> tag, it's not needed
-        lectura_content.script.extract()
+        # Remove the <script> tags if they are inserted into the reading, no needed
+        scripts_to_remove = lectura_content.script
+        if scripts_to_remove:
+            scripts_to_remove.extract()
         # If the reading has a <i> tag, it means it has a psalm
         salmo_extract = lectura_content.i.extract().text if lectura_content.i else ''
         # If the reading has <b> tags, it means the reading is not empty and has a title
