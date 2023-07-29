@@ -23,13 +23,14 @@ class RedisUp:
         self._redis = redis.Redis(connection_pool=pool)
 
     def post(self, key, content):
+        cache_id = self._redis.get(key)
         if not self._redis:
             self._connect()
         # avoid inserting the same content
-        if not self._redis.get(key):
+        if not cache_id:
             content = json.dumps(content)
             self._redis.set(key, content)
-        return self._redis.get(key)
+        return cache_id
 
     def get(self, key):
         return self._redis.get(key)
