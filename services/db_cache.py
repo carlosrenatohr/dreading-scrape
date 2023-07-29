@@ -1,6 +1,7 @@
 import os
 import json
 import redis 
+from redis.connection import ConnectionPool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,11 +15,12 @@ class RedisUp:
         self._connect()
 
     def _connect(self):
-        self._redis = redis.Redis(
+        pool = ConnectionPool(
             host= self._endpoint,
             port= self._port,
             password= self._password,
         )
+        self._redis = redis.Redis(connection_pool=pool)
 
     def post(self, key, content):
         if not self._redis:
