@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import requests
 import services.db as db
-import services.db_cache as redis
+from services.db_cache import RedisUp
 import services.bs_helper as scrapper
 
 readings_table_name = 'readings'
@@ -83,6 +83,7 @@ def run_today():
 def send_data_to_db(content):
     res = scrapper.get_lecture_pieces(content)
     cache_id = redis.post(now_eu, res)
+    print(f'Inserted id: {cache_id}\n')
     inserted_id = db.post_doc('readings', res)
     print(f'Inserted id: {inserted_id}')
     print(f'Cache id: {cache_id}')
@@ -92,4 +93,5 @@ def main():
     run_today()
 
 if __name__ == '__main__':
+    redis = RedisUp()
     main()
