@@ -83,6 +83,11 @@ def run_from_last_week():
         content = request_web_content(datee)
         send_data_to_db(content)
 
+def run_from_next_week():
+    for time in loop_days_range(today, today + timedelta(days=7)):
+        datee = time.strftime("%Y-%m-%d")
+        content = request_web_content(datee)
+        send_data_to_db(content)
 
 def run_today():
     content = get_html_content()
@@ -108,6 +113,7 @@ def main():
     # run_from_date(sdate, today)
     # run_today()
     run_from_last_week()
+    run_from_next_week()
 
 if __name__ == '__main__':
     redis = RedisUp()
