@@ -9,24 +9,93 @@ _SPANISH_MONTHS = [
     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ]
 
+# ciudadredonda.org (2026) renders the readings inside a Modern Events Calendar /
+# Divi wrapper whose class depends on the page:
+#   - /evangelio-lecturas-hoy/        -> div.mec-single-event-description (accordion, "today")
+#   - /events/lecturas-..._DATE/      -> div.mec-divi-content              (dated event page)
+# Both share the same inner shape: a run of <h2> section headings ("Primera
+# Lectura" / "Salmo" / "Segunda Lectura" on Sundays / "Evangelio"), each followed
+# by the section's <p> paragraphs up to the next <h2>. mec-event-content is kept
+# as a defensive fallback for layout variants.
+_CONTAINER_CLASSES = ('mec-single-event-description', 'mec-divi-content', 'mec-event-content')
 
-def get_lecture_pieces(content):
+# A heading counts as a reading section when its text names one of these.
+_SECTION_KEYWORDS = ('lectura', 'salmo', 'evangelio')
+
+
+def _is_section_heading(h2):
+    text = h2.get_text(' ', strip=True).lower()
+    return any(keyword in text for keyword in _SECTION_KEYWORDS)
+
+
+def _find_reading_container(body):
+    # Return the wrapper that actually holds the reading <h2> sections, trying the
+    # known classes in order. Returning None (rather than falling back to the whole
+    # page) keeps unrelated pages — e.g. the pre-2026 layout — correctly unparsed.
+    for css_class in _CONTAINER_CLASSES:
+        for candidate in body.find_all('div', class_=css_class):
+            if any(_is_section_heading(h2) for h2 in candidate.find_all('h2')):
+                return candidate
+    return None
+
+
+def _resolve_date(date_raw):
+    # date_raw is supplied by the fetch layer when the source URL carries the date
+    # (the /events/ pages embed it). Otherwise we stamp "today" in Europe/Madrid,
+    # since the "today" page has no date marker of its own.
+    if date_raw:
+        day = datetime.strptime(date_raw[:10], '%Y-%m-%d').date()
+    else:
+        day = datetime.now(ZoneInfo('Europe/Madrid')).date()
+        date_raw = day.strftime('%Y-%m-%d 00:00:00')
+    date_title = '%d de %s de %d' % (day.day, _SPANISH_MONTHS[day.month - 1], day.year)
+    return date_raw, date_title
+
+
+def _extract_section(heading):
+    # Collect the <p> paragraphs that belong to this section (up to the next <h2>).
+    paragraphs = []
+    for sibling in heading.find_next_siblings():
+        if sibling.name == 'h2':
+            break
+        if sibling.name == 'p':
+            paragraphs.append(sibling)
+    if not paragraphs:
+        return None
+
+    bolds = [b.get_text(' ', strip=True) for p in paragraphs for b in p.find_all('b')]
+    italics = [i.get_text(' ', strip=True) for p in paragraphs for i in p.find_all('i')]
+    content_text = '\n'.join(
+        p.get_text(' ', strip=True) for p in paragraphs if p.get_text(strip=True))
+
+    title = heading.get_text(' ', strip=True)
+    row = {
+        'title': title,
+        'content': content_text,
+        'first_line': bolds[0] if bolds else '',
+    }
+    # Only the psalm is classified by its heading (its sung response is the <i>);
+    # ordinary readings close with the bold "Palabra de Dios / del Señor".
+    if 'salmo' in title.lower():
+        row['psalm'] = italics[0] if italics else ''
+    else:
+        row['last_line'] = bolds[-1] if len(bolds) > 1 else ''
+    return row
+
+
+def get_lecture_pieces(content, date_raw=None):
     if not content:
         return None
     body = BeautifulSoup(content, 'html.parser')
 
-    # The reading now lives in the Modern Events Calendar accordion: a
-    # `div.mec-single-event-description` whose body is a run of <h2> section
-    # headings (Primera Lectura / Salmo / Evangelio) each followed by <p>s.
-    desc = body.find('div', {'class': 'mec-single-event-description'})
-    headings = desc.find_all('h2') if desc else []
-    # Pages with no reading published yet (or an unrecognised layout) carry no
-    # section headings; treat those as "nothing to store".
-    if not desc or not headings:
+    container = _find_reading_container(body)
+    if not container:
+        return None
+    headings = [h2 for h2 in container.find_all('h2') if _is_section_heading(h2)]
+    if not headings:
         return None
 
-    # Title: prefer the specific accordion toggle title ("Evangelio y Lecturas
-    # del Lunes de la XV Semana..."), fall back to the generic page <h1>.
+    # Title: prefer the accordion toggle title, fall back to the page <h1>.
     toggle_title = body.find('h3', {'class': 'mec-toggle-title'})
     if toggle_title:
         title = toggle_title.get_text(' ', strip=True)
@@ -34,47 +103,15 @@ def get_lecture_pieces(content):
         h1 = body.find('h1')
         title = h1.get_text(strip=True) if h1 else ''
 
-    # The new page has no <time datetime=...>: stamp with the current Madrid date.
-    now_eu = datetime.now(ZoneInfo("Europe/Madrid"))
+    date_raw, date_title = _resolve_date(date_raw)
     res = {
         'title': title,
-        'date_title': '%d de %s de %d' % (
-            now_eu.day, _SPANISH_MONTHS[now_eu.month - 1], now_eu.year),
-        'date_raw': now_eu.strftime("%Y-%m-%d 00:00:00"),
+        'date_title': date_title,
+        'date_raw': date_raw,
         'lecturas': [],
     }
-
     for heading in headings:
-        # Collect the <p> paragraphs that belong to this section (up to next h2).
-        paragraphs = []
-        for sib in heading.find_next_siblings():
-            if sib.name == 'h2':
-                break
-            if sib.name == 'p':
-                paragraphs.append(sib)
-        if not paragraphs:
-            continue
-
-        bolds = [b.get_text(' ', strip=True)
-                 for p in paragraphs for b in p.find_all('b')]
-        italics = [i.get_text(' ', strip=True)
-                   for p in paragraphs for i in p.find_all('i')]
-        content_text = '\n'.join(
-            p.get_text(' ', strip=True) for p in paragraphs if p.get_text(strip=True))
-
-        lectura_row = {
-            'title': heading.get_text(' ', strip=True),
-            'content': content_text,
-            'first_line': bolds[0] if bolds else '',
-        }
-        # A psalm carries its sung response in an <i> (old markup used the same
-        # cue); ordinary readings close with a bold "Palabra de Dios/del Señor".
-        is_psalm = 'salmo' in lectura_row['title'].lower() or bool(italics)
-        if is_psalm:
-            lectura_row['psalm'] = italics[0] if italics else ''
-        else:
-            lectura_row['last_line'] = bolds[-1] if len(bolds) > 1 else ''
-
-        res['lecturas'].append(lectura_row)
-
+        row = _extract_section(heading)
+        if row:
+            res['lecturas'].append(row)
     return res
