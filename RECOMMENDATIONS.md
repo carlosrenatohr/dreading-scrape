@@ -18,6 +18,8 @@ Prioritized backlog for reviving this scraper. References use `file:line` from t
 - **Unit tests (was P2):** pytest suite — the parser against a synthetic MEC-accordion fixture, and `send_data_to_db` insert/dedup/skip paths with fakes; `pytest` pinned in `requirements-dev.txt`.
 - **Cleanup:** removed the stray in-code TODOs and the dead commented-out cache block in `lectura.py`.
 - **Dropped the unused offline-cache helpers (was P2):** removed `get_html_local_file` and `create_html_local_file` (the latter clobbered the `lectura.html` fixture on every run); `run_today` now fetches directly.
+- **Filled the Apache LICENSE copyright** (was P2).
+- **Test CI:** `.github/workflows/tests.yaml` runs the pytest suite on every push and pull request (no external services needed — the tests use a fixture and fakes).
 
 ## P0 — blocks fresh data (the source site changed)
 1. **Site-change caveats (the rework is done, but note the trade-offs).** The 2026 site only serves a single "today" page (`?f=YYYY-MM-DD` is ignored), so:
