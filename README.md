@@ -2,22 +2,26 @@
 
 Scraper for the Catholic **daily liturgical readings** ("evangelio y lecturas del día"). It fetches the reading page from [ciudadredonda.org](https://www.ciudadredonda.org), parses the title, date and each reading (first reading, psalm, gospel), caches the result in Redis and persists it to MongoDB. It is the data producer for the companion [`dreading-api`](../dreading-api) project.
 
-> **Status — side project, being revived.** The scraper works end-to-end against the current (2026) `ciudadredonda.org` layout and against a local Docker stack (see below): it fetches today's page, parses the readings, and writes them to Redis + MongoDB. The source site was restructured after the original version was written — the old `?f=YYYY-MM-DD` date parameter no longer exists, so only **today's** reading can be fetched (dates are stamped from the run in Europe/Madrid time). The bundled `lectura.html` is a real page from the old layout, kept as a historical fixture. See [RECOMMENDATIONS.md](./RECOMMENDATIONS.md) for the remaining backlog.
+> **Status — side project, being revived.** The scraper works end-to-end against the current (2026) `ciudadredonda.org` layout and a local Docker stack (see below). It fetches **today's** accordion page plus the **upcoming week** of dated `/events/` pages — walking the site's next-day links — parses each reading (including the **Segunda Lectura** that Sundays and feasts carry), and writes them to Redis + MongoDB. The old `?f=YYYY-MM-DD` param is gone, but the dated `/events/` pages restore per-date coverage going forward (historical backfill isn't available — the site is forward-looking). The bundled `lectura.html` is the old layout, kept as a historical fixture. See [RECOMMENDATIONS.md](./RECOMMENDATIONS.md) for the remaining backlog.
 
 ## How it works
 
 ```
-ciudadredonda.org ──HTTP──▶ lectura.py ──parse──▶ bs_helper.get_lecture_pieces()
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                              ▼
-             Redis (cache, keyed          MongoDB (collection
-             by reading date)             "readings", deduped
-                                          by date_raw)
+ /evangelio-lecturas-hoy/  (today, accordion)  ─┐
+ /evangelio-de-manana/ ─▶ /events/…_DATE/ ──────┤ HTTP   lectura.py
+   walk next-day links → upcoming week           ├──────▶ (run_today / run_upcoming)
+                                                 ┘            │  parse
+                                        bs_helper.get_lecture_pieces()
+                                                              │
+                                   ┌──────────────────────────┴───────────────┐
+                                   ▼                                           ▼
+                            Redis (cache, keyed                 MongoDB (collection "readings",
+                            by reading date)                    deduped by date_raw)
 ```
 
-- `lectura.py` — entry point. Fetches today's reading page, then hands the HTML to the parser and writes the result to Redis + MongoDB. (The date-range helpers are kept as thin wrappers that also fetch today, since the site no longer serves per-date pages.)
-- `services/bs_helper.py` — BeautifulSoup parser for the site's Modern Events Calendar accordion (`div.mec-single-event-description`). Returns `{ title, date_title, date_raw, lecturas: [ { title, content, first_line, psalm|last_line } ] }`, or `None` when the page holds no reading.
+- `lectura.py` — entry point. `run_today` parses the "today" accordion; `run_tomorrow` / `run_upcoming` resolve the dated `/events/` pages and walk the next-day links forward. Each reading is written to Redis + MongoDB.
+- `services/bs_helper.py` — BeautifulSoup parser handling **both** page wrappers (the accordion `div.mec-single-event-description` and the `/events/` page `div.mec-divi-content`), over an arbitrary number of `<h2>` sections. Returns `{ title, date_title, date_raw, lecturas: [ { title, content, first_line, psalm|last_line } ] }`, or `None` when the page holds no reading.
+- `services/source.py` — discovers the dated `/events/` URLs from the page links (tomorrow, and the next/prev day from any event page) and extracts the `YYYY-MM-DD` embedded in an event URL.
 - `services/db.py` — MongoDB client (`MongoUp`). Inserts into the `readings` collection, deduping by `date_raw`.
 - `services/db_cache.py` — Redis client (`RedisUp`). Caches each reading JSON, keyed by its date.
 
