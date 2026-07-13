@@ -24,7 +24,11 @@ class MongoUp:
             self._client.admin.command('ping')
             print("Pinged your deployment. You successfully connected to MongoDB!")
         except Exception as e:
-            print(e)
+            # Fail loudly: previously the exception was swallowed and `_client`
+            # was left None, so later calls crashed with AttributeError and a
+            # broken run could still exit 0. Re-raise so the run exits non-zero.
+            print(f"Failed to connect to MongoDB: {e}")
+            raise
 
     def close(self):
         self._client.close()
