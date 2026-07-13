@@ -17,6 +17,7 @@ Prioritized backlog for reviving this scraper. References use `file:line` from t
 - **Structured logging + injectable clients (was P1):** `print` replaced with the `logging` module; `send_data_to_db`/`run_today`/`main` now receive the Redis and Mongo clients as arguments instead of module globals, so they are importable and testable.
 - **Unit tests (was P2):** pytest suite — the parser against a synthetic MEC-accordion fixture, and `send_data_to_db` insert/dedup/skip paths with fakes; `pytest` pinned in `requirements-dev.txt`.
 - **Cleanup:** removed the stray in-code TODOs and the dead commented-out cache block in `lectura.py`.
+- **Dropped the unused offline-cache helpers (was P2):** removed `get_html_local_file` and `create_html_local_file` (the latter clobbered the `lectura.html` fixture on every run); `run_today` now fetches directly.
 
 ## P0 — blocks fresh data (the source site changed)
 1. **Site-change caveats (the rework is done, but note the trade-offs).** The 2026 site only serves a single "today" page (`?f=YYYY-MM-DD` is ignored), so:
@@ -29,8 +30,7 @@ Prioritized backlog for reviving this scraper. References use `file:line` from t
 2. **Optional flow refactors** (`lectura.py`): move the HTTP request after the cache check (skip the fetch when the reading is already cached), and move the persistence logic into `services/`. The stray TODO comments that tracked these were removed; behavior is correct as-is.
 
 ## P2 — hardening
-6. **Wire or drop the offline cache.** `get_html_local_file` is now unused (its only caller, the commented cache block, was removed). Either wire it as an offline fixture cache in `get_html_content` or delete it.
-7. **Fill the LICENSE placeholder** — `Copyright [yyyy] [name of copyright owner]` is still the Apache template default.
+6. **Fill the LICENSE placeholder** — `Copyright [yyyy] [name of copyright owner]` is still the Apache template default.
 
 ## P3 — nice to have
 10. Packaging (`pyproject.toml`) and a linter/formatter (ruff + black).

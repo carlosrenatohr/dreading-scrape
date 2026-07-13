@@ -30,35 +30,8 @@ def request_web_content(date=None):
     return None
 
 
-def create_html_local_file(content):
-    try:
-        with open('lectura.html', 'w') as file:
-            file.write(content)
-    except:
-        pass
-
-
-def get_html_local_file():
-    content = None
-
-    try:
-        with open('lectura.html', 'r') as file:
-            content = file.read()
-    except:
-        pass
-
-    return content
-
-
-def get_html_content():
-    content = request_web_content()
-    create_html_local_file(content)
-
-    return content
-
-
 def run_today(redis_client, db_client):
-    content = get_html_content()
+    content = request_web_content()
     send_data_to_db(content, redis_client, db_client)
 
 
