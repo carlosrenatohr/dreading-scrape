@@ -87,7 +87,7 @@ Copy `.env.demo` to `.env`. The demo values target the local Docker stack; for p
 
 ## Scheduled runs (production)
 
-`.github/workflows/scraper.yaml` runs the scraper on a cron via GitHub Actions, reading the same variables from repository **secrets**. See [RECOMMENDATIONS.md](./RECOMMENDATIONS.md) for a note on the cron expression vs. the "Daily" workflow name.
+`.github/workflows/scraper.yaml` runs the scraper **daily** via GitHub Actions (`cron: 30 5 * * *`), reading the Mongo/Upstash credentials from repository **secrets**. It can also be triggered manually from the Actions tab (`workflow_dispatch`).
 
 ## License
 
