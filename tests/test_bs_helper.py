@@ -15,6 +15,10 @@ def _fixture():
     return _read(os.path.join(FIXTURE_DIR, 'reading_mec.html'))
 
 
+def _event_fixture():
+    return _read(os.path.join(FIXTURE_DIR, 'event_sunday.html'))
+
+
 def test_parses_new_mec_dom():
     res = get_lecture_pieces(_fixture())
 
@@ -35,6 +39,26 @@ def test_salmo_has_psalm_readings_have_last_line():
     assert 'psalm' in by_title['Salmo']
     assert 'last_line' in by_title['Primera Lectura']
     assert 'last_line' in by_title['Evangelio']
+
+
+def test_parses_event_page_with_second_reading():
+    res = get_lecture_pieces(_event_fixture())
+
+    assert res['title'] == 'Evangelio y Lecturas del XVI Domingo del Tiempo Ordinario'
+    titles = [l['title'] for l in res['lecturas']]
+    assert titles == ['Primera Lectura', 'Salmo', 'Segunda Lectura', 'Evangelio']
+
+    by_title = {l['title']: l for l in res['lecturas']}
+    assert 'psalm' in by_title['Salmo']
+    assert 'last_line' in by_title['Segunda Lectura']
+    assert 'last_line' in by_title['Evangelio']
+
+
+def test_date_raw_override_sets_date_fields():
+    res = get_lecture_pieces(_event_fixture(), date_raw='2026-07-19 00:00:00')
+
+    assert res['date_raw'] == '2026-07-19 00:00:00'
+    assert res['date_title'] == '19 de julio de 2026'
 
 
 def test_returns_none_for_missing_reading():
