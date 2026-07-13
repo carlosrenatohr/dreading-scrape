@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import requests
 from services.db import MongoUp
 from services.db_cache import RedisUp
@@ -6,7 +7,8 @@ import services.bs_helper as scrapper
 
 readings_table_name = 'readings'
 today = datetime.now(timezone.utc)
-today_eu = today.astimezone(timezone(timedelta(hours=1)))
+# DST-aware Spain time (CET/CEST) instead of a hardcoded UTC+1 offset.
+today_eu = today.astimezone(ZoneInfo("Europe/Madrid"))
 
 now = today.date().strftime("%Y-%m-%d")
 now_eu = today_eu.date().strftime("%Y-%m-%d")
@@ -71,7 +73,7 @@ def loop_days_range(start_date, end_date):
 
 
 def run_from_date(start_date, end_date):
-    for time in loop_days_range(sdate, today):
+    for time in loop_days_range(start_date, end_date):
         datee = time.strftime("%Y-%m-%d")
         content = request_web_content(datee)
         send_data_to_db(content)
@@ -100,7 +102,12 @@ def run_today():
 # TODO: Move the http request after the cache check
 def send_data_to_db(content):
     res = scrapper.get_lecture_pieces(content)
-    cache_id = redis.post(now_eu, res)
+    if not res:
+        print('No reading found for this date, skipping.\n')
+        return
+    # Key the cache by the reading's own date so every day in a range is cached,
+    # not just the first (previously all shared today's key).
+    cache_id = redis.post(res['date_raw'], res)
     print(f'Cache id: {cache_id}\n')
     # avoid duplicates in the database
     where = {'date_raw': res['date_raw']}
