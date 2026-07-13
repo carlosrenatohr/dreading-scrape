@@ -1,7 +1,10 @@
+import logging
 import requests
 from services.db import MongoUp
 from services.db_cache import RedisUp
 import services.bs_helper as scrapper
+
+logger = logging.getLogger(__name__)
 
 readings_table_name = 'readings'
 
@@ -47,60 +50,53 @@ def get_html_local_file():
     return content
 
 
-# TODO: Add cache
 def get_html_content():
-    # content = get_html_local_file()
-
-    # if content:
-    #     return content
-
     content = request_web_content()
     create_html_local_file(content)
 
     return content
 
 
-def run_today():
+def run_today(redis_client, db_client):
     content = get_html_content()
-    send_data_to_db(content)
+    send_data_to_db(content, redis_client, db_client)
 
 
 # The site no longer serves per-date or date-range readings (only a single
 # "today" page, see the URL note above). These range helpers are kept so
 # existing callers/imports don't break, but they now just fetch today.
-def run_from_date(start_date=None, end_date=None):
-    run_today()
+def run_from_date(redis_client, db_client, start_date=None, end_date=None):
+    run_today(redis_client, db_client)
 
 
-def run_from_last_week():
-    run_today()
+def run_from_last_week(redis_client, db_client):
+    run_today(redis_client, db_client)
 
 
-def run_from_next_week():
-    run_today()
+def run_from_next_week(redis_client, db_client):
+    run_today(redis_client, db_client)
 
 
-# TODO: Move the logic to the db_cache.py file
-# TODO: Move the http request after the cache check
-def send_data_to_db(content):
+def send_data_to_db(content, redis_client, db_client):
     res = scrapper.get_lecture_pieces(content)
     if not res:
-        print('No reading found for this date, skipping.\n')
+        logger.info('No reading found for this date, skipping.')
         return
     # Key the cache by the reading's own date.
-    cache_id = redis.post(res['date_raw'], res)
-    print(f'Cache id: {cache_id}\n')
+    cache_id = redis_client.post(res['date_raw'], res)
+    logger.info('Cache id: %s', cache_id)
     # avoid duplicates in the database
     where = {'date_raw': res['date_raw']}
-    inserted_id = db.get_doc(readings_table_name, where)
+    inserted_id = db_client.get_doc(readings_table_name, where)
     if not inserted_id:
-        inserted_id = db.post_doc(readings_table_name, res)
-    print(f'Mongo id: {inserted_id}\n')
+        inserted_id = db_client.post_doc(readings_table_name, res)
+    logger.info('Mongo id: %s', inserted_id)
 
-def main():
-    run_today()
+
+def main(redis_client, db_client):
+    logging.basicConfig(level=logging.INFO)
+    run_today(redis_client, db_client)
+
 
 if __name__ == '__main__':
-    redis = RedisUp()
-    db = MongoUp()
-    main()
+    main(RedisUp(), MongoUp())

@@ -1,9 +1,12 @@
+import logging
 import os
 from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class MongoUp:
     def __init__(self):
@@ -22,12 +25,12 @@ class MongoUp:
         try:
             self._client = MongoClient(self._uri, server_api=ServerApi('1'))
             self._client.admin.command('ping')
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-        except Exception as e:
+            logger.info("Pinged your deployment. You successfully connected to MongoDB!")
+        except Exception:
             # Fail loudly: previously the exception was swallowed and `_client`
             # was left None, so later calls crashed with AttributeError and a
             # broken run could still exit 0. Re-raise so the run exits non-zero.
-            print(f"Failed to connect to MongoDB: {e}")
+            logger.exception("Failed to connect to MongoDB")
             raise
 
     def close(self):
