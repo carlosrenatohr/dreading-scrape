@@ -20,15 +20,10 @@ Prioritized backlog for reviving this scraper. References use `file:line` from t
 - **Dropped the unused offline-cache helpers (was P2):** removed `get_html_local_file` and `create_html_local_file` (the latter clobbered the `lectura.html` fixture on every run); `run_today` now fetches directly.
 - **Filled the Apache LICENSE copyright** (was P2).
 - **Test CI:** `.github/workflows/tests.yaml` runs the pytest suite on every push and pull request (no external services needed — the tests use a fixture and fakes).
-
-## P0 — blocks fresh data (the source site changed)
-1. **Site-change caveats (the rework is done, but note the trade-offs).** The 2026 site only serves a single "today" page (`?f=YYYY-MM-DD` is ignored), so:
-   - Only **today's** reading can be fetched; historical/future readings are no longer available from the source. Coverage now depends on running the job daily and accumulating.
-   - `date_raw`/`date_title` are stamped from the run instant in Europe/Madrid (there is no `<time>` on the page). A run near midnight vs. Madrid time may attribute the reading to the adjacent day.
-   - The parser was verified against a weekday 3-reading page; **second-reading Sundays** (a 4th `<h2>`) are handled generically but not yet verified against a live Sunday page.
-   - The bundled `lectura.html` is the *old* layout only — keep it as a historical fixture, not a current parser reference.
+- **Dated fetching restored + Sunday support (was P0):** the parser now also reads the `/events/…_DATE/` pages (`div.mec-divi-content`), so Sundays and feasts with a **Segunda Lectura** parse (verified live: 4 sections). `services/source.py` discovers the dated event URLs (tomorrow, and the next/prev day from any event page) and `run_upcoming` walks them forward, persisting each reading under the date embedded in its URL — verified live pulling 2026-07-14…07-20 into Mongo. The bundled `lectura.html` is the *old* layout, kept as a historical fixture only.
 
 ## P1 — correctness & reliability
+1. **Remaining source trade-offs.** Historical backfill isn't available — the site is forward-looking, so coverage accumulates going forward from the daily run. The "today" accordion page has no date marker so it is stamped from the run in Europe/Madrid (a run near midnight may attribute it to the adjacent day); the dated `/events/` pages are exact (date from the URL).
 2. **Optional flow refactors** (`lectura.py`): move the HTTP request after the cache check (skip the fetch when the reading is already cached), and move the persistence logic into `services/`. The stray TODO comments that tracked these were removed; behavior is correct as-is.
 
 ## P2 — hardening
