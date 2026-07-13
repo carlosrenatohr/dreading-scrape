@@ -2,7 +2,7 @@
 
 Scraper for the Catholic **daily liturgical readings** ("evangelio y lecturas del día"). It fetches the reading page from [ciudadredonda.org](https://www.ciudadredonda.org), parses the title, date and each reading (first reading, psalm, gospel), caches the result in Redis and persists it to MongoDB. It is the data producer for the companion [`dreading-api`](../dreading-api) project.
 
-> **Status — side project, being revived.** The scraping pipeline, caching and persistence are functional and run end-to-end against a local Docker stack (see below). **The live source site was restructured after this scraper was written**, so the fetch/parse selectors need a rework before it can pull fresh data again — see [RECOMMENDATIONS.md](./RECOMMENDATIONS.md) (P0). The bundled `lectura.html` is a real page from the old layout used as a parsing fixture.
+> **Status — side project, being revived.** The scraper works end-to-end against the current (2026) `ciudadredonda.org` layout and against a local Docker stack (see below): it fetches today's page, parses the readings, and writes them to Redis + MongoDB. The source site was restructured after the original version was written — the old `?f=YYYY-MM-DD` date parameter no longer exists, so only **today's** reading can be fetched (dates are stamped from the run in Europe/Madrid time). The bundled `lectura.html` is a real page from the old layout, kept as a historical fixture. See [RECOMMENDATIONS.md](./RECOMMENDATIONS.md) for the remaining backlog.
 
 ## How it works
 
@@ -16,8 +16,8 @@ ciudadredonda.org ──HTTP──▶ lectura.py ──parse──▶ bs_helper.
                                           by date_raw)
 ```
 
-- `lectura.py` — entry point. Fetches a page (today, or a date range: last/next week), then hands the HTML to the parser and writes the result to Redis + MongoDB.
-- `services/bs_helper.py` — BeautifulSoup parser. Returns `{ title, date_title, date_raw, lecturas: [ { title, content, first_line, psalm|last_line } ] }`, or `None` when the page holds no reading.
+- `lectura.py` — entry point. Fetches today's reading page, then hands the HTML to the parser and writes the result to Redis + MongoDB. (The date-range helpers are kept as thin wrappers that also fetch today, since the site no longer serves per-date pages.)
+- `services/bs_helper.py` — BeautifulSoup parser for the site's Modern Events Calendar accordion (`div.mec-single-event-description`). Returns `{ title, date_title, date_raw, lecturas: [ { title, content, first_line, psalm|last_line } ] }`, or `None` when the page holds no reading.
 - `services/db.py` — MongoDB client (`MongoUp`). Inserts into the `readings` collection, deduping by `date_raw`.
 - `services/db_cache.py` — Redis client (`RedisUp`). Caches each reading JSON, keyed by its date.
 
@@ -25,13 +25,13 @@ Each stored reading looks like:
 
 ```json
 {
-  "title": "Lecturas de hoy Martes de la 6ª semana de Pascua",
-  "date_title": "16 de mayo de 2023",
-  "date_raw": "2023-05-16 00:00:00",
+  "title": "Evangelio y Lecturas del Lunes de la XV Semana del Tiempo Ordinario",
+  "date_title": "13 de julio de 2026",
+  "date_raw": "2026-07-13 00:00:00",
   "lecturas": [
-    { "title": "Primera lectura", "content": "...", "first_line": "...", "last_line": "..." },
+    { "title": "Primera Lectura", "content": "...", "first_line": "...", "last_line": "Palabra de Dios" },
     { "title": "Salmo", "content": "...", "first_line": "...", "psalm": "..." },
-    { "title": "Evangelio de hoy", "content": "...", "first_line": "...", "last_line": "..." }
+    { "title": "Evangelio", "content": "...", "first_line": "...", "last_line": "Palabra del Señor" }
   ]
 }
 ```
