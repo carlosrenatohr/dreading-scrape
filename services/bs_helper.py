@@ -1,48 +1,80 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from bs4 import BeautifulSoup
+
+# Spanish month names for the human-readable date_title (no locale dependency).
+_SPANISH_MONTHS = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
+
 
 def get_lecture_pieces(content):
     if not content:
         return None
     body = BeautifulSoup(content, 'html.parser')
-    title_el = body.find('h1')
-    time_el = body.find('time')
-    # Some dates (e.g. future days with no reading published yet) return a page
-    # without the title/time markers; treat those as "nothing to store".
-    if not title_el or not time_el or not time_el.has_attr('datetime'):
+
+    # The reading now lives in the Modern Events Calendar accordion: a
+    # `div.mec-single-event-description` whose body is a run of <h2> section
+    # headings (Primera Lectura / Salmo / Evangelio) each followed by <p>s.
+    desc = body.find('div', {'class': 'mec-single-event-description'})
+    headings = desc.find_all('h2') if desc else []
+    # Pages with no reading published yet (or an unrecognised layout) carry no
+    # section headings; treat those as "nothing to store".
+    if not desc or not headings:
         return None
-    res = {}
-    res['title'] = title_el.text
-    res['date_title'] = time_el.text
-    res['date_raw'] = time_el.attrs['datetime']
-    res['lecturas'] = []
-    # Loop through each section which contains a reading
-    for section in body.find_all('section'):
-        # Get the content of the reading to scrape it
-        lectura_content = section.find('div', {'class':'texto_palabra'})
-        # Skip nav/footer/other sections that hold no reading body
-        if not lectura_content:
+
+    # Title: prefer the specific accordion toggle title ("Evangelio y Lecturas
+    # del Lunes de la XV Semana..."), fall back to the generic page <h1>.
+    toggle_title = body.find('h3', {'class': 'mec-toggle-title'})
+    if toggle_title:
+        title = toggle_title.get_text(' ', strip=True)
+    else:
+        h1 = body.find('h1')
+        title = h1.get_text(strip=True) if h1 else ''
+
+    # The new page has no <time datetime=...>: stamp with the current Madrid date.
+    now_eu = datetime.now(ZoneInfo("Europe/Madrid"))
+    res = {
+        'title': title,
+        'date_title': '%d de %s de %d' % (
+            now_eu.day, _SPANISH_MONTHS[now_eu.month - 1], now_eu.year),
+        'date_raw': now_eu.strftime("%Y-%m-%d 00:00:00"),
+        'lecturas': [],
+    }
+
+    for heading in headings:
+        # Collect the <p> paragraphs that belong to this section (up to next h2).
+        paragraphs = []
+        for sib in heading.find_next_siblings():
+            if sib.name == 'h2':
+                break
+            if sib.name == 'p':
+                paragraphs.append(sib)
+        if not paragraphs:
             continue
-        lectura_content_b = lectura_content.find_all('b')
-        # Remove the <script> tags if they are inserted into the reading, no needed
-        scripts_to_remove = lectura_content.script
-        if scripts_to_remove:
-            scripts_to_remove.extract()
-        # If the reading has a <i> tag, it means it has a psalm
-        salmo_extract = lectura_content.i.extract().text if lectura_content.i else ''
-        # If the reading has <b> tags, it means the reading is not empty and has a title
-        # otherwise it's empty and we don't want to add it to the database
-        if lectura_content_b:
-            # Remove the <b> tags to get the text only
-            lectura_content.b.extract()
-            lectura_row = {
-                    'title': section.find('h2').text,
-                    'content': lectura_content.text,
-                    'first_line': lectura_content_b[0].text,
-                }
-            if salmo_extract:
-                lectura_row['psalm'] = salmo_extract
-            else:
-                lectura_row['last_line'] = lectura_content_b[1].text if len(lectura_content_b) > 1 else ''
-            res['lecturas'].append(lectura_row)
+
+        bolds = [b.get_text(' ', strip=True)
+                 for p in paragraphs for b in p.find_all('b')]
+        italics = [i.get_text(' ', strip=True)
+                   for p in paragraphs for i in p.find_all('i')]
+        content_text = '\n'.join(
+            p.get_text(' ', strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        lectura_row = {
+            'title': heading.get_text(' ', strip=True),
+            'content': content_text,
+            'first_line': bolds[0] if bolds else '',
+        }
+        # A psalm carries its sung response in an <i> (old markup used the same
+        # cue); ordinary readings close with a bold "Palabra de Dios/del Señor".
+        is_psalm = 'salmo' in lectura_row['title'].lower() or bool(italics)
+        if is_psalm:
+            lectura_row['psalm'] = italics[0] if italics else ''
+        else:
+            lectura_row['last_line'] = bolds[-1] if len(bolds) > 1 else ''
+
+        res['lecturas'].append(lectura_row)
 
     return res
