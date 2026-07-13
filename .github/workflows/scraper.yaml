@@ -2,7 +2,8 @@ name: Daily Reading Scraping
 
 on:
   schedule:
-    - cron: "35 3 1 * 0"
+    - cron: "30 5 * * *"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,15 +22,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-#      - name: Add content roots to PYTHONPATH
-#        env:
-#          PYTHONPATH: ${{ github.workspace }}/services
-#        run: |
-#          echo "export PYTHONPATH=${PYTHONPATH}" >> $GITHUB_ENV
-      
       - name: Run scraper
-        env: 
-          UPSTACK_CONNECTION_STR: ${{ secrets.UPSTACK_CONNECTION_STR }}
+        env:
           UPSTACK_ENDPOINT: ${{ secrets.UPSTACK_ENDPOINT }}
           UPSTACK_PORT: ${{ secrets.UPSTACK_PORT }}
           UPSTACK_PASSWORD: ${{ secrets.UPSTACK_PASSWORD }}
