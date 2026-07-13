@@ -1,34 +1,29 @@
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 import requests
 from services.db import MongoUp
 from services.db_cache import RedisUp
 import services.bs_helper as scrapper
 
 readings_table_name = 'readings'
-today = datetime.now(timezone.utc)
-# DST-aware Spain time (CET/CEST) instead of a hardcoded UTC+1 offset.
-today_eu = today.astimezone(ZoneInfo("Europe/Madrid"))
 
-now = today.date().strftime("%Y-%m-%d")
-now_eu = today_eu.date().strftime("%Y-%m-%d")
-edate = datetime(2023,5,20) #.strftime("%Y-%m-%d")
-sdate = datetime(2023,4,9) # .strftime("%Y-%m-%d") // 2/13, 4/7-8
-
-URL_TODAY = 'https://www.ciudadredonda.org/calendario-lecturas/evangelio-del-dia/hoy'
-URL = 'https://www.ciudadredonda.org/calendario-lecturas/evangelio-del-dia/?f='
+# The source site was restructured (2026-07): the old
+# `/calendario-lecturas/evangelio-del-dia/hoy` path now 301-redirects here, the
+# `?f=YYYY-MM-DD` date param is ignored, and only a single "today" page exists,
+# so per-date / date-range fetching is no longer possible.
+URL_TODAY = 'https://www.ciudadredonda.org/evangelio-lecturas-hoy/'
+URL = URL_TODAY
 
 
-def request_web_content(date = None):
+def request_web_content(date=None):
     headers = {
         'User-Agent': 'Mozilla/5.0'
     }
 
-    uri = URL_TODAY if not date else (URL + date)
-    response = requests.get(uri, headers=headers)
+    # Only a single "today" page exists now; `date` is accepted for backwards
+    # compatibility but the site ignores per-date requests. Follow redirects.
+    response = requests.get(URL_TODAY, headers=headers, allow_redirects=True)
     if response.status_code == 200:
         return response.text
-    
+
     return None
 
 
@@ -65,39 +60,26 @@ def get_html_content():
     return content
 
 
-def loop_days_range(start_date, end_date):
-   current_date = start_date
-   while current_date <= end_date:
-        yield current_date
-        current_date += timedelta(days=1)
-
-
-def run_from_date(start_date, end_date):
-    for time in loop_days_range(start_date, end_date):
-        datee = time.strftime("%Y-%m-%d")
-        content = request_web_content(datee)
-        send_data_to_db(content)
-
-
-def run_from_last_week():
-    for time in loop_days_range(today - timedelta(days=7), today):
-        datee = time.strftime("%Y-%m-%d")
-        content = request_web_content(datee)
-        send_data_to_db(content)
-
-def run_from_next_week():
-    for time in loop_days_range(today, today + timedelta(days=7)):
-        datee = time.strftime("%Y-%m-%d")
-        content = request_web_content(datee)
-        send_data_to_db(content)
-
 def run_today():
     content = get_html_content()
     send_data_to_db(content)
-    
 
-# TODO: Add reverse function to fetch future readings instead past which makes more sens
-# TODO: Add a function to fetch readings from a specific date
+
+# The site no longer serves per-date or date-range readings (only a single
+# "today" page, see the URL note above). These range helpers are kept so
+# existing callers/imports don't break, but they now just fetch today.
+def run_from_date(start_date=None, end_date=None):
+    run_today()
+
+
+def run_from_last_week():
+    run_today()
+
+
+def run_from_next_week():
+    run_today()
+
+
 # TODO: Move the logic to the db_cache.py file
 # TODO: Move the http request after the cache check
 def send_data_to_db(content):
@@ -105,8 +87,7 @@ def send_data_to_db(content):
     if not res:
         print('No reading found for this date, skipping.\n')
         return
-    # Key the cache by the reading's own date so every day in a range is cached,
-    # not just the first (previously all shared today's key).
+    # Key the cache by the reading's own date.
     cache_id = redis.post(res['date_raw'], res)
     print(f'Cache id: {cache_id}\n')
     # avoid duplicates in the database
@@ -117,10 +98,7 @@ def send_data_to_db(content):
     print(f'Mongo id: {inserted_id}\n')
 
 def main():
-    # run_from_date(sdate, today)
-    # run_today()
-    run_from_last_week()
-    run_from_next_week()
+    run_today()
 
 if __name__ == '__main__':
     redis = RedisUp()
