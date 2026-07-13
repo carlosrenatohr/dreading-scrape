@@ -7,7 +7,13 @@ load_dotenv()
 
 class MongoUp:
     def __init__(self):
-        self._uri = "mongodb+srv://"+os.getenv("DB_USERNAME")+":"+ os.getenv("DB_PASSWORD")+"@"+os.getenv("DB_HOST")+"/?retryWrites=true&w=majority"
+        # Prefer a full connection string (e.g. mongodb://mongo:27017 for the local
+        # Docker stack); fall back to building an Atlas mongodb+srv URI from parts.
+        self._uri = os.getenv("DB_URI") or (
+            "mongodb+srv://" + os.getenv("DB_USERNAME", "") + ":" + os.getenv("DB_PASSWORD", "")
+            + "@" + os.getenv("DB_HOST", "") + "/?retryWrites=true&w=majority"
+        )
+        self._db_name = os.getenv("DB_NAME", "dailyreading")
         # Create a new client and connect to the server
         self._client = None
         self.connect()
@@ -24,10 +30,10 @@ class MongoUp:
         self._client.close()
 
     def get_collection(self, collection_name):
-        return self._client.dailyreading[collection_name]
+        return self._client[self._db_name][collection_name]
 
     def get_collection_names(self):
-        return self._client.dailyreading.list_collection_names()  
+        return self._client[self._db_name].list_collection_names()
 
     def post_doc(self, collection_name, doc):
         # connect()
