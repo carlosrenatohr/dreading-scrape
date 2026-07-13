@@ -1,59 +1,47 @@
 import logging
+
 import requests
+
 from services.db import MongoUp
 from services.db_cache import RedisUp
+from services import source
 import services.bs_helper as scrapper
 
 logger = logging.getLogger(__name__)
 
 readings_table_name = 'readings'
 
-# The source site was restructured (2026-07): the old
-# `/calendario-lecturas/evangelio-del-dia/hoy` path now 301-redirects here, the
-# `?f=YYYY-MM-DD` date param is ignored, and only a single "today" page exists,
-# so per-date / date-range fetching is no longer possible.
-URL_TODAY = 'https://www.ciudadredonda.org/evangelio-lecturas-hoy/'
-URL = URL_TODAY
+BASE = 'https://www.ciudadredonda.org'
+# "Today" is the Modern Events Calendar accordion page (no date marker of its
+# own). "Tomorrow" is a teaser that links to a dated /events/ page; from there
+# the next/prev links (see services.source) let us walk the calendar forward.
+URL_TODAY = f'{BASE}/evangelio-lecturas-hoy/'
+URL_TOMORROW = f'{BASE}/evangelio-de-manana/'
+
+_HEADERS = {'User-Agent': 'Mozilla/5.0'}
 
 
-def request_web_content(date=None):
-    headers = {
-        'User-Agent': 'Mozilla/5.0'
-    }
-
-    # Only a single "today" page exists now; `date` is accepted for backwards
-    # compatibility but the site ignores per-date requests. Follow redirects.
-    response = requests.get(URL_TODAY, headers=headers, allow_redirects=True)
+def request_web_content(url=URL_TODAY):
+    # Fetch a page, following redirects; return its HTML on 200, else None.
+    response = requests.get(url, headers=_HEADERS, allow_redirects=True)
     if response.status_code == 200:
         return response.text
-
+    logger.warning('Fetch failed (%s) for %s', response.status_code, url)
     return None
 
 
-def run_today(redis_client, db_client):
-    content = request_web_content()
-    send_data_to_db(content, redis_client, db_client)
+def _date_raw_from(url):
+    date = source.date_from_event_url(url)
+    return f'{date} 00:00:00' if date else None
 
 
-# The site no longer serves per-date or date-range readings (only a single
-# "today" page, see the URL note above). These range helpers are kept so
-# existing callers/imports don't break, but they now just fetch today.
-def run_from_date(redis_client, db_client, start_date=None, end_date=None):
-    run_today(redis_client, db_client)
-
-
-def run_from_last_week(redis_client, db_client):
-    run_today(redis_client, db_client)
-
-
-def run_from_next_week(redis_client, db_client):
-    run_today(redis_client, db_client)
-
-
-def send_data_to_db(content, redis_client, db_client):
-    res = scrapper.get_lecture_pieces(content)
+def send_data_to_db(content, redis_client, db_client, date_raw=None):
+    # date_raw, when known from the source URL (the /events/ pages embed it),
+    # gives the reading its real date; otherwise the parser stamps today (used
+    # for the "today" accordion page, which carries no date).
+    res = scrapper.get_lecture_pieces(content, date_raw)
     if not res:
-        logger.info('No reading found for this date, skipping.')
+        logger.info('No reading found, skipping.')
         return
     # Key the cache by the reading's own date.
     cache_id = redis_client.post(res['date_raw'], res)
@@ -66,9 +54,44 @@ def send_data_to_db(content, redis_client, db_client):
     logger.info('Mongo id: %s', inserted_id)
 
 
+def run_today(redis_client, db_client):
+    send_data_to_db(request_web_content(URL_TODAY), redis_client, db_client)
+
+
+def _run_event(url, redis_client, db_client):
+    # Fetch one dated /events/ page and persist it under the date in its URL.
+    content = request_web_content(url)
+    if content:
+        send_data_to_db(content, redis_client, db_client, _date_raw_from(url))
+    return content
+
+
+def run_tomorrow(redis_client, db_client):
+    teaser = request_web_content(URL_TOMORROW)
+    url = source.tomorrow_event_url(teaser) if teaser else None
+    if not url:
+        logger.warning('No tomorrow reading link found on %s', URL_TOMORROW)
+        return
+    _run_event(url, redis_client, db_client)
+
+
+def run_upcoming(redis_client, db_client, days=7):
+    # Anchor at tomorrow's event page and walk the "next day" links forward,
+    # persisting each dated reading (deduped by date). Stops after `days` pages
+    # or when the next-day chain ends.
+    teaser = request_web_content(URL_TOMORROW)
+    url = source.tomorrow_event_url(teaser) if teaser else None
+    fetched = 0
+    while url and fetched < days:
+        content = _run_event(url, redis_client, db_client)
+        url = source.next_event_url(content) if content else None
+        fetched += 1
+
+
 def main(redis_client, db_client):
     logging.basicConfig(level=logging.INFO)
     run_today(redis_client, db_client)
+    run_upcoming(redis_client, db_client, days=7)
 
 
 if __name__ == '__main__':
