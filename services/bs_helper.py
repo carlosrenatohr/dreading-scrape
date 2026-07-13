@@ -1,5 +1,4 @@
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
 
@@ -40,14 +39,16 @@ def _find_reading_container(body):
 
 
 def _resolve_date(date_raw):
-    # date_raw is supplied by the fetch layer when the source URL carries the date
-    # (the /events/ pages embed it). Otherwise we stamp "today" in Europe/Madrid,
-    # since the "today" page has no date marker of its own.
+    # date_raw is supplied by the fetch layer when the source URL carries the
+    # date (the /events/ pages embed it); otherwise we stamp the current UTC
+    # date, since the "today" accordion page has no date marker of its own.
     if date_raw:
         day = datetime.strptime(date_raw[:10], '%Y-%m-%d').date()
     else:
-        day = datetime.now(ZoneInfo('Europe/Madrid')).date()
-        date_raw = day.strftime('%Y-%m-%d 00:00:00')
+        day = datetime.now(timezone.utc).date()
+    # Store the calendar date at UTC midnight in ISO-8601 so multi-timezone
+    # consumers (apps, analytics) read it unambiguously.
+    date_raw = day.strftime('%Y-%m-%dT00:00:00Z')
     date_title = '%d de %s de %d' % (day.day, _SPANISH_MONTHS[day.month - 1], day.year)
     return date_raw, date_title
 
