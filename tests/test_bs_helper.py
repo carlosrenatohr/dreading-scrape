@@ -23,7 +23,7 @@ def test_parses_new_mec_dom():
     res = get_lecture_pieces(_fixture())
 
     assert res['title']
-    assert re.match(r'^\d{4}-\d{2}-\d{2} 00:00:00$', res['date_raw'])
+    assert re.match(r'^\d{4}-\d{2}-\d{2}T00:00:00Z$', res['date_raw'])
 
     titles = [l['title'] for l in res['lecturas']]
     assert len(res['lecturas']) == 3
@@ -55,9 +55,9 @@ def test_parses_event_page_with_second_reading():
 
 
 def test_date_raw_override_sets_date_fields():
-    res = get_lecture_pieces(_event_fixture(), date_raw='2026-07-19 00:00:00')
+    res = get_lecture_pieces(_event_fixture(), date_raw='2026-07-19')
 
-    assert res['date_raw'] == '2026-07-19 00:00:00'
+    assert res['date_raw'] == '2026-07-19T00:00:00Z'
     assert res['date_title'] == '19 de julio de 2026'
 
 

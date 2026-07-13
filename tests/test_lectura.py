@@ -72,7 +72,7 @@ def test_run_tomorrow_persists_the_dated_reading():
 
     assert db_client.post_doc.call_count == 1
     _collection, doc = db_client.post_doc.call_args.args
-    assert doc['date_raw'] == '2026-07-14 00:00:00'
+    assert doc['date_raw'] == '2026-07-14T00:00:00Z'
 
 
 def test_run_upcoming_walks_next_links():
@@ -90,4 +90,4 @@ def test_run_upcoming_walks_next_links():
 
     dates = sorted(doc['date_raw'] for _collection, doc
                    in (call.args for call in db_client.post_doc.call_args_list))
-    assert dates == ['2026-07-14 00:00:00', '2026-07-15 00:00:00']
+    assert dates == ['2026-07-14T00:00:00Z', '2026-07-15T00:00:00Z']

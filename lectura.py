@@ -32,7 +32,7 @@ def request_web_content(url=URL_TODAY):
 
 def _date_raw_from(url):
     date = source.date_from_event_url(url)
-    return f'{date} 00:00:00' if date else None
+    return f'{date}T00:00:00Z' if date else None
 
 
 def send_data_to_db(content, redis_client, db_client, date_raw=None):
