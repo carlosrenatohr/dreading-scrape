@@ -23,11 +23,18 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run scraper
+        # Writes to the dreading-api-worker (Cloudflare D1) via /api/ingest and
+        # enriches each reading with Workers AI. Set these repository secrets:
+        #   INGEST_URL      = https://<worker>.workers.dev/api/ingest
+        #   INGEST_TOKEN    = the worker's INGEST_TOKEN secret
+        #   ENRICH_PROVIDER = llm   (leave unset to use the offline stub)
+        #   ENRICH_API_URL  = https://api.cloudflare.com/client/v4/accounts/<id>/ai/v1/chat/completions
+        #   ENRICH_API_KEY  = a Cloudflare API token with Workers AI access
         env:
-          UPSTACK_ENDPOINT: ${{ secrets.UPSTACK_ENDPOINT }}
-          UPSTACK_PORT: ${{ secrets.UPSTACK_PORT }}
-          UPSTACK_PASSWORD: ${{ secrets.UPSTACK_PASSWORD }}
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          INGEST_URL: ${{ secrets.INGEST_URL }}
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+          ENRICH_PROVIDER: ${{ secrets.ENRICH_PROVIDER }}
+          ENRICH_MODEL: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+          ENRICH_API_URL: ${{ secrets.ENRICH_API_URL }}
+          ENRICH_API_KEY: ${{ secrets.ENRICH_API_KEY }}
         run: python lectura.py 
