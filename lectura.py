@@ -5,6 +5,7 @@ import requests
 from services.db import MongoUp
 from services.db_cache import RedisUp
 from services import source
+from services import enrich
 import services.bs_helper as scrapper
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ def send_data_to_db(content, redis_client, db_client, date_raw=None):
     if not res:
         logger.info('No reading found, skipping.')
         return
+    # Add the supplementary reflection / kids version / message / image prompt.
+    res = enrich.enrich(res)
     # Key the cache by the reading's own date.
     cache_id = redis_client.post(res['date_raw'], res)
     logger.info('Cache id: %s', cache_id)

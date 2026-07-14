@@ -36,6 +36,9 @@ def test_insert_path_when_not_duplicated():
     collection, doc = db_client.post_doc.call_args.args
     assert collection == 'readings'
     assert doc['date_raw'] == redis_client.post.call_args.args[0]
+    # the stored doc is enriched (reflection etc.) and schema-versioned
+    assert doc['reflection'] and doc['message']
+    assert doc['source_version'] == 2
 
 
 def test_dedup_path_when_already_present():
