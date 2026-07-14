@@ -1,9 +1,11 @@
 import logging
+import os
 
 import requests
 
 from services.db import MongoUp
 from services.db_cache import RedisUp
+from services.ingest import IngestClient, NullCache
 from services import source
 from services import enrich
 import services.bs_helper as scrapper
@@ -97,5 +99,13 @@ def main(redis_client, db_client):
     run_upcoming(redis_client, db_client, days=7)
 
 
+def build_clients():
+    # Write to the D1 Worker via /api/ingest when INGEST_URL is set; otherwise
+    # use the classic Redis (Upstash) + MongoDB path.
+    if os.getenv('INGEST_URL'):
+        return NullCache(), IngestClient()
+    return RedisUp(), MongoUp()
+
+
 if __name__ == '__main__':
-    main(RedisUp(), MongoUp())
+    main(*build_clients())
