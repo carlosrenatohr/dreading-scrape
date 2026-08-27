@@ -1,0 +1,82 @@
+name: Daily Cross-Service Healthcheck
+
+on:
+  schedule:
+    - cron: "0 14 * * *"  # 8am Nicaragua = 14:00 UTC
+  workflow_dispatch:
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check API Worker — /today
+        run: |
+          BASE="https://dreading-api-worker.nativerse.workers.dev"
+          RESP=$(curl -sf "$BASE/api/v1/readings/today" || true)
+          if [ -z "$RESP" ]; then
+            echo "::error::API Worker /today did not respond"
+            exit 1
+          fi
+          STATUS=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null || echo "0")
+          if [ "$STATUS" -lt 1 ]; then
+            echo "::error::API Worker /today returned 0 readings"
+            exit 1
+          fi
+          echo "✅ API /today: total=$STATUS"
+
+      - name: Check API Worker — /last
+        run: |
+          BASE="https://dreading-api-worker.nativerse.workers.dev"
+          RESP=$(curl -sf "$BASE/api/v1/readings/last" || true)
+          if [ -z "$RESP" ]; then
+            echo "::error::API Worker /last did not respond"
+            exit 1
+          fi
+          TITLE=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('title',''))" 2>/dev/null || echo "")
+          if [ -z "$TITLE" ]; then
+            echo "::error::API Worker /last returned empty title"
+            exit 1
+          fi
+          echo "✅ API /last: title=$TITLE"
+
+      - name: Check API Worker — image endpoint
+        run: |
+          BASE="https://dreading-api-worker.nativerse.workers.dev"
+          DATE=$(date -u +%Y-%m-%d)
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" "$BASE/images/$DATE.png" || echo "000")
+          if [ "$HTTP_CODE" = "404" ]; then
+            echo "⚠️ No image for today ($DATE) — non-fatal"
+          elif [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Image exists: /images/$DATE.png"
+          else
+            echo "::error::Image endpoint returned $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Check PWA
+        run: |
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" "https://dreading-pwa.pages.dev/" || echo "000")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::PWA returned $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ PWA: HTTP $HTTP_CODE"
+
+      - name: Check Bot — dry run
+        run: |
+          RESP=$(curl -sf "https://dreading-bot-tg.*.workers.dev/run?dry=1" || true)
+          if [ -z "$RESP" ]; then
+            echo "::error::Bot dry-run did not respond"
+            exit 1
+          fi
+          METHOD=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('method',''))" 2>/dev/null || echo "")
+          if [ -z "$METHOD" ]; then
+            echo "::error::Bot dry-run returned empty method"
+            exit 1
+          fi
+          echo "✅ Bot dry-run: method=$METHOD"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Cross-service healthcheck failed — see steps above"
