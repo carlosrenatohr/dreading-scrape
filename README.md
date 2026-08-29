@@ -10,20 +10,26 @@ Scraper for the Catholic **daily liturgical readings** ("evangelio y lecturas de
  /evangelio-lecturas-hoy/  (today, accordion)  ─┐
  /evangelio-de-manana/ ─▶ /events/…_DATE/ ──────┤ HTTP   lectura.py
    walk next-day links → upcoming week           ├──────▶ (run_today / run_upcoming)
-                                                 ┘            │  parse
-                                        bs_helper.get_lecture_pieces()
-                                                              │
-                                   ┌──────────────────────────┴───────────────┐
-                                   ▼                                           ▼
-                            Redis (cache, keyed                 MongoDB (collection "readings",
-                            by reading date)                    deduped by date_raw)
+                                                  ┘            │  parse
+                                         bs_helper.get_lecture_pieces()
+                                                               │
+                                                      enrich.enrich()
+                                                               │
+                                          ┌────────────────────┴────────────────────┐
+                                          ▼                                          ▼
+                                   INGEST_URL set?                            INGEST_URL empty?
+                                          │                                          │
+                              POST /api/ingest                            ┌────────┴────────┐
+                              to Cloudflare Worker                        ▼                  ▼
+                              (D1 + AI enrichment)                   Redis (cache)    MongoDB (persist)
 ```
 
-- `lectura.py` — entry point. `run_today` parses the "today" accordion; `run_tomorrow` / `run_upcoming` resolve the dated `/events/` pages and walk the next-day links forward. Each reading is written to Redis + MongoDB.
+- `lectura.py` — entry point. `run_today` parses the "today" accordion; `run_tomorrow` / `run_upcoming` resolve the dated `/events/` pages and walk the next-day links forward. When `INGEST_URL` is set (production), each reading is POSTed to the Worker's `/api/ingest` endpoint where it gets AI-enriched and stored in D1. When `INGEST_URL` is empty (local dev), readings go to Redis + MongoDB.
 - `services/bs_helper.py` — BeautifulSoup parser handling **both** page wrappers (the accordion `div.mec-single-event-description` and the `/events/` page `div.mec-divi-content`), over an arbitrary number of `<h2>` sections. Returns `{ title, date_title, date_raw, lecturas: [ { title, content, first_line, psalm|last_line } ] }`, or `None` when the page holds no reading.
 - `services/source.py` — discovers the dated `/events/` URLs from the page links (tomorrow, and the next/prev day from any event page) and extracts the `YYYY-MM-DD` embedded in an event URL.
-- `services/db.py` — MongoDB client (`MongoUp`). Inserts into the `readings` collection, deduping by `date_raw`.
-- `services/db_cache.py` — Redis client (`RedisUp`). Caches each reading JSON, keyed by its date.
+- `services/ingest.py` — `IngestClient` posts readings to the Worker via `POST /api/ingest`. Used when `INGEST_URL` is set.
+- `services/db.py` — MongoDB client (`MongoUp`). Legacy path only.
+- `services/db_cache.py` — Redis client (`RedisUp`). Legacy path only.
 
 Each stored reading looks like:
 
@@ -54,6 +60,8 @@ docker compose up -d mongo redis  # start the datastores
 docker compose run --rm scraper   # fetch → parse → cache → persist, then exit
 ```
 
+> **Note:** The Docker setup uses the legacy MongoDB/Redis path. For the production Worker path, set `INGEST_URL` and `INGEST_TOKEN` in your `.env` and run without Docker.
+
 Inspect what was stored:
 
 ```bash
@@ -78,20 +86,29 @@ python lectura.py      # run from the repo root so `services` imports resolve
 
 ## Configuration
 
-Copy `.env.demo` to `.env`. The demo values target the local Docker stack; for production point them at MongoDB Atlas + Upstash.
+Copy `.env.demo` to `.env`. For production, set `INGEST_URL` and `INGEST_TOKEN` to post directly to the Cloudflare Worker (recommended). When `INGEST_URL` is empty, the scraper falls back to the legacy MongoDB + Redis path.
 
-| Variable | Purpose | Local default | Cloud |
-| --- | --- | --- | --- |
-| `DB_URI` | Full Mongo connection string (wins over the parts below) | `mongodb://mongo:27017` | leave empty |
-| `DB_NAME` | Mongo database | `dailyreading` | `dailyreading` |
-| `DB_HOST` / `DB_USERNAME` / `DB_PASSWORD` | Build an Atlas `mongodb+srv://` URI when `DB_URI` is empty | — | Atlas cluster creds |
-| `UPSTACK_ENDPOINT` / `UPSTACK_PORT` | Redis host/port | `redis` / `6379` | Upstash endpoint |
-| `UPSTACK_PASSWORD` | Redis password (empty = no auth) | empty | Upstash password |
-| `UPSTACK_SSL` | TLS for Redis (`true` for Upstash, `false` for local) | `false` | `true` |
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `INGEST_URL` | Worker `/api/ingest` endpoint — enables Worker path | empty (legacy) |
+| `INGEST_TOKEN` | Bearer token for `/api/ingest` | empty (set via secrets) |
+| `DB_URI` | Full Mongo connection string (legacy) | `mongodb://mongo:27017` |
+| `DB_NAME` | Mongo database (legacy) | `dailyreading` |
+| `UPSTACK_ENDPOINT` / `UPSTACK_PORT` | Redis host/port (legacy) | `redis` / `6379` |
 
 ## Scheduled runs (production)
 
-`.github/workflows/scraper.yaml` runs the scraper **daily** via GitHub Actions (`cron: 30 5 * * *`), reading the Mongo/Upstash credentials from repository **secrets**. It can also be triggered manually from the Actions tab (`workflow_dispatch`).
+`.github/workflows/scraper.yml` runs the scraper **daily** at 05:30 UTC via GitHub Actions cron. It reads `INGEST_TOKEN` from repository secrets. It can also be triggered manually from the Actions tab (`workflow_dispatch`).
+
+## Manual triggers
+
+| What | Command / Action | When to use |
+| --- | --- | --- |
+| **Re-scrape today** | Actions tab → "Scraper — daily ingest" → Run workflow | After a bad scrape, or to regenerate today's reading with AI enrichment + image |
+| **Re-scrape specific date** | `INGEST_URL=... INGEST_TOKEN=... python -m lectura` locally | Debugging a specific date |
+| **Deploy Worker** | Push to `main` on `dreading-api-worker` (auto) or `pnpm run deploy` | After code changes to the Worker |
+
+> **Important:** The Worker only enriches readings (AI reflection + image) when they arrive via `/api/ingest`. Existing readings in D1 are **not** re-enriched. To regenerate an image for a past date, re-scrape that day's reading.
 
 ## License
 
